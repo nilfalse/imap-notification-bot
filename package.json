@@ -1,0 +1,26 @@
+{
+  "name": "imap-notification-bot",
+  "version": "0.8.0",
+  "description": "A Telegram bot to get notified about new e-mails (IMAP).",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "imap",
+    "imap-notify",
+    "telegram",
+    "bot"
+  ],
+  "author": "Yaroslav Ilin <nilfalse@yandex.com>",
+  "dependencies": {
+    "bunyan": "^1.8.1",
+    "dotenv": "^2.0.0",
+    "imap-notify": "0.0.3",
+    "mongoose": "^4.6.0",
+    "node-telegram-bot-api": "^0.23.3",
+    "nodemon": "^1.10.2"
+  },
+  "devDependencies": {}
+}
