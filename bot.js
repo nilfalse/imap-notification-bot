@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
-const notify = require('imap-notify');
+const Imap = require('imap');
+const imapWatch = require('./imap-watch');
 
 
 module.exports = function(app) {
@@ -31,8 +32,7 @@ module.exports = function(app) {
                     log.warn({ chat_id: msg.chat.id }, 'confirmation was not found');
                     return bot.sendMessage(msg.chat.id, 'begin by sending /start');
                 }
-                log.info({ c }, 'confirmation found');
-                return new models.Account({
+                const acc = {
                     _id: msg.chat.id + '@' + c.email,
                     user: c.email,
                     password: c.possiblePassword,
@@ -40,18 +40,22 @@ module.exports = function(app) {
                     port: c.port,
                     tls: c.tls,
                     box: c.box
-                }).save()
-                .then(account => createNotifyListener(account))
+                }
+                log.info({ c }, 'confirmation found');
+                return models.Account.update({ _id: acc._id }, acc, { upsert: true, setDefaultsOnInsert: true }).exec()
+                .then(() => createMailListener(acc))
                 .then(
                     listener => {
-                        listener.on('mail', mail => bot.sendMessage(msg.chat.id, JSON.stringify(mail, undefined, 2)));
+                        listener.on('mail', mail => {
+                            bot.sendMessage(msg.chat.id, notificationMessageTemplate(mail));
+                        });
                         // TODO last connected
                         app.mailCheckers.push(listener);
                         return models.Confirmation.remove({ _id: msg.chat.id })
                             .then(() => c.email + ' confirmed');
                     },
                     err => {
-                        log.error({ chat_id: msg.chat.id }, 'wrong credentials provided');
+                        log.error({ chat_id: msg.chat.id, stack: err.stack }, err.message);
                         return 'could not verify account credentials';
                     }
                 )
@@ -130,10 +134,38 @@ module.exports = function(app) {
     });
 };
 
-function createNotifyListener(opts) {
+function createMailListener(opts) {
+    const params = {
+        user: opts.user,
+        host: opts.host,
+        port: opts.port,
+        tls: opts.tls,
+        autotls: 'always',
+        keepalive: {
+            interval: 10000,
+            idleInterval: 300000,  // 5 mins
+            forceNoop: true
+        }
+    };
+    if (!opts.password) {
+        params.xoauth2 = opts.xoauth2;
+    } else {
+        params.password = opts.password;
+    }
+    const imap = new Imap(params);
+
     return new Promise(function(resolve, reject) {
-        const notifier = notify(opts);
+        const notifier = imapWatch(imap, opts.box);
         notifier.on('error', err => reject(err));
         notifier.on('success', () => resolve(notifier));
     });
+}
+
+function notificationMessageTemplate(mail) {
+    const sender = mail.from.map(f => (f.name + ' ' + f.address).trim()).join(', ');
+    const to = mail.to.map(f => (f.name + ' ' + f.address).trim()).join(', ');
+    return 'To: ' + to + '\n' +
+        'From ' + sender + ':\n' +
+        mail.subject + '\n\n' +
+        (mail.text || mail.html);
 }
